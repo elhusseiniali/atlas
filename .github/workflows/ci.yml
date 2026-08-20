@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v9
+        with:
+          enable-cache: true
+
+      # Atlas launches vLLM as a subprocess and the unit suite is GPU-free.
+      # Keep CI fast by installing only dependencies required to import and
+      # test Atlas, rather than the vLLM/CUDA runtime stack.
+      - name: Lint
+        run: uv run --isolated --no-project --with "ruff>=0.6" ruff check .
+
+      - name: Check formatting
+        run: uv run --isolated --no-project --with "ruff>=0.6" ruff format --check .
+
+      - name: Run tests
+        env:
+          PYTHONPATH: src
+        run: >
+          uv run --isolated --no-project
+          --with "loguru>=0.7"
+          --with "pydantic>=2"
+          --with "pytest>=8"
+          --with "pytest-cov>=7"
+          pytest --cov=atlas --cov-report=term-missing
