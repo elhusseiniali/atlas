@@ -51,7 +51,7 @@ The main settings are:
 Atlas sets `CUDA_VISIBLE_DEVICES` for each worker to the GPUs in
 `GPUConfig(devices=[...])`. Tensor parallelism defaults to the number of
 devices listed. If specified explicitly, `tensor_parallel_size` must equal the
-number of devices.
+number of devices. A physical GPU can be assigned to only one worker.
 
 Before starting a worker, Atlas checks the assigned GPUs with `nvidia-smi`.
 By default, it refuses to start when a GPU is already more than 50% occupied.
@@ -62,7 +62,7 @@ Configure the limit for an individual worker with
 `max_used_memory_fraction`:
 
 ```python
-gpu=GPUConfig(
+gpu = GPUConfig(
     devices=[2, 3],
     max_used_memory_fraction=0.75,
 )

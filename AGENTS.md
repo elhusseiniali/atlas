@@ -38,6 +38,8 @@ launches, logs, and supervises the resulting vLLM subprocesses.
 - Each entry in `WORKERS` creates one `vllm serve` process.
 - `GPUConfig.devices` contains physical GPU indices, which Atlas passes to the
   worker through `CUDA_VISIBLE_DEVICES`.
+- A physical GPU may be assigned to only one worker; overlapping worker GPU
+  assignments are rejected before preflight checks run.
 - Tensor parallelism defaults to the number of listed devices. If
   `tensor_parallel_size` is explicit, it must equal `len(devices)`.
 - Keep model-specific vLLM flags in `extra_args` unless the option belongs in
