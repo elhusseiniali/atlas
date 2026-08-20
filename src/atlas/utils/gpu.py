@@ -93,12 +93,17 @@ def get_gpu_memory_usage(
         ) from exc
 
     usage: dict[int, GPUMemoryInfo] = {}
-    for line in result.stdout.strip().splitlines():
-        index_str, used_str, total_str = (part.strip() for part in line.split(","))
-        index = int(index_str)
-        usage[index] = GPUMemoryInfo(
-            index=index, used_mib=int(used_str), total_mib=int(total_str)
-        )
+    try:
+        for line in result.stdout.strip().splitlines():
+            index_str, used_str, total_str = (part.strip() for part in line.split(","))
+            index = int(index_str)
+            usage[index] = GPUMemoryInfo(
+                index=index, used_mib=int(used_str), total_mib=int(total_str)
+            )
+    except ValueError as exc:
+        raise GPUUnavailableError(
+            f"could not parse nvidia-smi output: {result.stdout.strip()!r}"
+        ) from exc
 
     if devices is not None:
         missing = set(devices) - usage.keys()

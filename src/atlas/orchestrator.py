@@ -42,6 +42,30 @@ def _resolve_ports(configs: list[WorkerConfig]) -> None:
 
 
 def _check_gpus(configs: list[WorkerConfig]) -> None:
+    """Validate worker GPU assignments and their current availability.
+
+    Parameters
+    ----------
+    configs : list[WorkerConfig]
+        Workers that are about to be launched.
+
+    Raises
+    ------
+    ValueError
+        If more than one worker is assigned the same physical GPU.
+    GPUUnavailableError
+        If an assigned GPU cannot be queried or is too heavily occupied.
+    """
+    assigned: dict[int, str] = {}
+    for config in configs:
+        for device in config.gpu.devices:
+            if device in assigned:
+                raise ValueError(
+                    f"GPU {device} is assigned to both workers "
+                    f"'{assigned[device]}' and '{config.name}'."
+                )
+            assigned[device] = config.name
+
     for config in configs:
         check_gpu_availability(config.gpu.devices, config.gpu.max_used_memory_fraction)
 
@@ -71,7 +95,7 @@ class Orchestrator:
         _resolve_ports(self._configs)
         try:
             _check_gpus(self._configs)
-        except GPUUnavailableError as exc:
+        except (GPUUnavailableError, ValueError) as exc:
             logger.error(f"GPU preflight check failed: {exc}")
             return 1
 
