@@ -1,0 +1,41 @@
+[project]
+name = "atlas"
+version = "0.1.0"
+description = "Config-driven local vLLM server launcher"
+authors = [
+    { name = "Ali El Husseini", email = "elhusseiniali@icloud.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "loguru>=0.7",
+    "pydantic>=2",
+    "vllm>=0.6",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+]
+
+[project.scripts]
+atlas = "atlas.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.ruff.lint]
+select = [
+    "B",
+    "E",
+    "F",
+    "I",
+    "PL",
+    "SIM",
+    "UP",
+]
+
+[tool.ruff.format]
+indent-style = "space"
+line-ending = "lf"
+quote-style = "double"
