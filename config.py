@@ -2,10 +2,10 @@
 
 Edit this file to describe the model(s) you want to serve, then run
 ``uv run atlas`` from this directory. Each `atlas.schema.WorkerConfig`
-becomes one ``vllm serve`` process on its own GPU set and port.
+becomes one vLLM server worker on its own GPU set and port.
 """
 
-from atlas.schema import GPUConfig, WorkerConfig
+from atlas.schema import APIConfig, GPUConfig, WorkerConfig
 
 WORKERS = [
     # Qwen3.8-27B is a 27B BF16 multimodal model. Its ~52 GiB of weights do
@@ -17,12 +17,10 @@ WORKERS = [
         gpu=GPUConfig(devices=[0, 1]),
         gpu_memory_utilization=0.9,
         max_model_len=32768,
-        extra_args=[
-            "--reasoning-parser",
-            "qwen3",
-            "--enable-auto-tool-choice",
-            "--tool-call-parser",
-            "qwen3_coder",
-        ],
+        api=APIConfig(
+            reasoning_parser="qwen3",
+            enable_auto_tool_choice=True,
+            tool_call_parser="qwen3_coder",
+        ),
     ),
 ]

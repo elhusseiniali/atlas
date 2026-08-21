@@ -1,174 +1,213 @@
-"""Tests for vLLM command construction and process management."""
-
-import os
+"""Tests for programmatic vLLM worker configuration and lifecycle."""
 
 import pytest
+from pydantic import ValidationError
 
-from atlas.schema import GPUConfig, WorkerConfig
-from atlas.worker import Worker, build_command
+from atlas.schema import (
+    APIConfig,
+    CacheConfig,
+    GPUConfig,
+    SchedulerConfig,
+    WorkerConfig,
+)
+from atlas.worker import Worker, build_vllm_args
+
+_TENSOR_PARALLEL_SIZE = 2
+_MAX_MODEL_LEN = 4096
 
 
-def test_build_command_includes_required_worker_settings() -> None:
-    """Build a vLLM command from resolved worker settings."""
+def test_build_vllm_args_uses_typed_serving_settings() -> None:
+    """Translate supported Atlas settings without raw CLI fragments."""
     config = WorkerConfig(
         model="example/model",
         served_model_name="example",
-        host="127.0.0.1",
-        port=8123,
-        gpu=GPUConfig(devices=[2, 3]),
-        gpu_memory_utilization=0.8,
-        max_model_len=4096,
-        quantization="fp8",
-        extra_args=["--enable-prefix-caching"],
+        port=8000,
+        gpu=GPUConfig(devices=[0, 1]),
+        scheduler=SchedulerConfig(
+            max_num_seqs=64,
+            max_num_batched_tokens=8192,
+            enable_chunked_prefill=True,
+        ),
+        cache=CacheConfig(enable_prefix_caching=True),
+        api=APIConfig(
+            reasoning_parser="qwen3",
+            enable_auto_tool_choice=True,
+            tool_call_parser="qwen3_coder",
+        ),
     )
 
-    assert build_command(config) == [
-        "vllm",
-        "serve",
+    assert build_vllm_args(config) == [
+        "--model",
         "example/model",
         "--served-model-name",
         "example",
         "--host",
-        "127.0.0.1",
+        "0.0.0.0",
         "--port",
-        "8123",
+        "8000",
         "--tensor-parallel-size",
         "2",
         "--dtype",
         "auto",
         "--gpu-memory-utilization",
-        "0.8",
-        "--max-model-len",
-        "4096",
-        "--quantization",
-        "fp8",
+        "0.9",
+        "--max-num-seqs",
+        "64",
+        "--max-num-batched-tokens",
+        "8192",
+        "--reasoning-parser",
+        "qwen3",
+        "--tool-call-parser",
+        "qwen3_coder",
+        "--enable-chunked-prefill",
         "--enable-prefix-caching",
+        "--enable-auto-tool-choice",
     ]
 
 
-def test_build_command_omits_optional_flags_when_unset() -> None:
-    """Avoid passing absent optional values to vLLM."""
+def test_explicitly_disabled_flags_are_sent_as_no_flags() -> None:
+    """Send ``--no-`` forms so vLLM's defaults are actually overridden."""
     config = WorkerConfig(
         model="example/model",
         port=8000,
         gpu=GPUConfig(devices=[0]),
+        scheduler=SchedulerConfig(
+            enable_chunked_prefill=False, async_scheduling=False
+        ),
+        cache=CacheConfig(enable_prefix_caching=False),
     )
 
-    command = build_command(config)
+    args = build_vllm_args(config)
 
-    assert "--max-model-len" not in command
-    assert "--quantization" not in command
-    assert command[4] == "example/model"
+    assert "--no-enable-chunked-prefill" in args
+    assert "--no-async-scheduling" in args
+    assert "--no-enable-prefix-caching" in args
+    assert "--enable-chunked-prefill" not in args
+    assert "--enable-prefix-caching" not in args
 
 
-def test_worker_start_sets_gpu_visibility_and_spawns_process(
+def test_unset_flags_defer_to_vllm() -> None:
+    """Emit neither form when a three-state flag is left unset."""
+    config = WorkerConfig(
+        model="example/model", port=8000, gpu=GPUConfig(devices=[0])
+    )
+
+    args = build_vllm_args(config)
+
+    for name in (
+        "enable-chunked-prefill",
+        "async-scheduling",
+        "enable-prefix-caching",
+    ):
+        assert f"--{name}" not in args
+        assert f"--no-{name}" not in args
+
+
+def test_auto_tool_choice_requires_a_tool_call_parser() -> None:
+    """Reject the unusable combination while it is still a config error."""
+    with pytest.raises(ValidationError, match="requires tool_call_parser"):
+        APIConfig(enable_auto_tool_choice=True)
+
+
+def test_auto_tool_choice_is_accepted_with_a_parser() -> None:
+    """Allow automatic tool choice once a parser is configured."""
+    config = APIConfig(
+        enable_auto_tool_choice=True, tool_call_parser="qwen3_coder"
+    )
+
+    assert config.tool_call_parser == "qwen3_coder"
+
+
+def test_build_vllm_args_parses_into_vllms_engine_model_field() -> None:
+    """Check the built arguments against vLLM's own server parser.
+
+    vLLM's server parser exposes the model twice: as the optional
+    positional ``model_tag``, and as ``--model``. Only ``--model``
+    reaches ``ModelConfig`` and selects the weights that are loaded;
+    ``model_tag`` is read solely by the ``vllm serve`` CLI wrapper,
+    which copies it into ``model``. Atlas calls ``run_server`` directly
+    and so bypasses that wrapper, meaning a bare positional would leave
+    ``args.model`` at vLLM's default checkpoint while the server still
+    advertised the configured ``served_model_name``.
+
+    Comparing `atlas.worker.build_vllm_args` output against a literal
+    argument list cannot catch that, since both sides would agree. This
+    test parses the arguments instead, and is skipped when vLLM isn't
+    installed (as in the GPU-free CI environment).
+    """
+    pytest.importorskip("vllm")
+
+    from vllm.entrypoints.openai.api_server import (  # noqa: PLC0415
+        make_arg_parser,
+    )
+    from vllm.entrypoints.openai.cli_args import (  # noqa: PLC0415
+        validate_parsed_serve_args,
+    )
+    from vllm.utils.argparse_utils import (  # noqa: PLC0415
+        FlexibleArgumentParser,
+    )
+
+    config = WorkerConfig(
+        model="example/model",
+        served_model_name="example",
+        port=8000,
+        gpu=GPUConfig(devices=[0, 1]),
+        max_model_len=_MAX_MODEL_LEN,
+    )
+
+    parser = make_arg_parser(FlexibleArgumentParser(description="test"))
+    args = parser.parse_args(build_vllm_args(config))
+    validate_parsed_serve_args(args)
+
+    assert args.model == "example/model"
+    assert args.model_tag is None
+    assert args.served_model_name == ["example"]
+    assert args.tensor_parallel_size == _TENSOR_PARALLEL_SIZE
+    assert args.max_model_len == _MAX_MODEL_LEN
+
+
+def test_worker_spawns_process_without_importing_vllm(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Launch a worker with only its configured physical GPUs visible."""
+    """Pass a serialized schema to a fresh spawned Python process."""
     calls: dict[str, object] = {}
 
-    class FakeProcess:
-        """Minimal process placeholder."""
+    class Process:
+        """Minimal spawned-process double."""
 
-    class FakeThread:
-        """Thread double that never starts the output pump."""
+        exitcode = None
 
-        def __init__(self, **kwargs) -> None:
-            """Record thread construction arguments."""
-            calls["thread"] = kwargs
+        def __init__(self, **kwargs: object) -> None:
+            calls["process"] = kwargs
 
         def start(self) -> None:
-            """Avoid starting a background thread in this unit test."""
+            calls["started"] = True
+
+        def is_alive(self) -> bool:
+            return True
+
+        def terminate(self) -> None:
+            calls["terminated"] = True
+
+        def join(self, timeout: float) -> None:
+            calls["timeout"] = timeout
+
+        def kill(self) -> None:
+            calls["killed"] = True
+
+    Context = type("Context", (), {"Process": Process})
 
     monkeypatch.setattr(
-        "atlas.worker.subprocess.Popen",
-        lambda command, **kwargs: (
-            calls.update(command=command, popen=kwargs) or FakeProcess()
-        ),
+        "atlas.worker.multiprocessing.get_context", lambda method: Context()
     )
-    monkeypatch.setattr("atlas.worker.threading.Thread", FakeThread)
-    config = WorkerConfig(
-        model="example/model", port=8000, gpu=GPUConfig(devices=[2, 3])
+    worker = Worker(
+        WorkerConfig(
+            model="example/model", port=8000, gpu=GPUConfig(devices=[2])
+        )
     )
-    worker = Worker(config)
 
     worker.start()
 
-    assert calls["popen"]["env"]["CUDA_VISIBLE_DEVICES"] == "2,3"
-    assert calls["popen"]["start_new_session"] is True
-    assert calls["command"] == build_command(config)
-    assert calls["thread"]["name"] == "example/model-output"
-
-
-def test_output_pump_forwards_lines_and_throttles_progress(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Forward normal output while emitting only the first rapid progress update."""
-    messages: list[str] = []
-
-    class BoundLogger:
-        """Logger double that records forwarded output."""
-
-        def info(self, message: str) -> None:
-            """Record an output message."""
-            messages.append(message)
-
-    class Process:
-        """Process double with an output pipe."""
-
-        def __init__(self) -> None:
-            """Create a closed writer and readable output stream."""
-            read_fd, write_fd = os.pipe()
-            os.write(write_fd, b"ready\n25%\r50%\rdone")
-            os.close(write_fd)
-            self.stdout = os.fdopen(read_fd, "rb", buffering=0)
-
-    worker = Worker(
-        WorkerConfig(model="example/model", port=8000, gpu=GPUConfig(devices=[0]))
-    )
-    worker._process = Process()  # type: ignore[assignment]
-    monkeypatch.setattr("atlas.worker.logger.bind", lambda **kwargs: BoundLogger())
-    monotonic_values = iter([10.0, 11.0])
-    monkeypatch.setattr("atlas.worker.time.monotonic", lambda: next(monotonic_values))
-
-    worker._pump_output()
-
-    assert messages == ["ready", "25%", "done"]
-
-
-def test_worker_state_and_termination_delegate_to_process_helper(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Expose process state and join the output thread after termination."""
-    calls: dict[str, object] = {}
-
-    class Process:
-        """Process double with a configurable exit status."""
-
-        def poll(self) -> int | None:
-            """Report an active process."""
-            return None
-
-    class Thread:
-        """Thread double that records join timeouts."""
-
-        def join(self, timeout: float) -> None:
-            """Record the requested join timeout."""
-            calls["join_timeout"] = timeout
-
-    worker = Worker(
-        WorkerConfig(model="example/model", port=8000, gpu=GPUConfig(devices=[0]))
-    )
-    process = Process()
-    worker._process = process  # type: ignore[assignment]
-    worker._pump_thread = Thread()  # type: ignore[assignment]
-    monkeypatch.setattr(
-        "atlas.worker.terminate_process_group",
-        lambda received, timeout: calls.update(process=received, timeout=timeout),
-    )
-
+    assert calls["started"] is True
+    assert calls["process"]["args"][0]["gpu"]["devices"] == [2]
     assert worker.is_alive() is True
-    assert worker.exit_code() is None
-    worker.terminate(timeout=4)
-
-    assert calls == {"process": process, "timeout": 4, "join_timeout": 4}

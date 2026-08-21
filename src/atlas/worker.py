@@ -1,37 +1,16 @@
-"""Builds and owns a single ``vllm serve`` subprocess."""
+"""Launch and supervise spawned, programmatic vLLM server workers."""
 
+import multiprocessing
 import os
-import re
-import subprocess
-import threading
-import time
 
 from atlas.log import logger
 from atlas.schema import WorkerConfig
-from atlas.utils.process import terminate_process_group
-
-# Progress bars redraw with "\r"; regular log lines end with "\n".
-_TERMINATOR_RE = re.compile(rb"[\r\n]")
-_READ_CHUNK_SIZE = 8192
-_PROGRESS_LOG_INTERVAL = 5.0
 
 
-def build_command(config: WorkerConfig) -> list[str]:
-    """Translate a worker config into a ``vllm serve`` command line.
-
-    Parameters
-    ----------
-    config : atlas.schema.WorkerConfig
-        Worker configuration to translate.
-
-    Returns
-    -------
-    list[str]
-        Command line, suitable for `subprocess.Popen`.
-    """
+def build_vllm_args(config: WorkerConfig) -> list[str]:
+    """Translate a worker schema into supported vLLM server arguments."""
     args = [
-        "vllm",
-        "serve",
+        "--model",
         config.model,
         "--served-model-name",
         config.served_model_name or config.model,
@@ -46,115 +25,115 @@ def build_command(config: WorkerConfig) -> list[str]:
         "--gpu-memory-utilization",
         str(config.gpu_memory_utilization),
     ]
-    if config.max_model_len is not None:
-        args += ["--max-model-len", str(config.max_model_len)]
-    if config.quantization is not None:
-        args += ["--quantization", config.quantization]
-    args += config.extra_args
+    optional = (
+        ("--max-model-len", config.max_model_len),
+        ("--quantization", config.quantization),
+        ("--max-num-seqs", config.scheduler.max_num_seqs),
+        ("--max-num-batched-tokens", config.scheduler.max_num_batched_tokens),
+        (
+            "--max-num-scheduled-tokens",
+            config.scheduler.max_num_scheduled_tokens,
+        ),
+        ("--scheduling-policy", config.scheduler.scheduling_policy),
+        ("--stream-interval", config.scheduler.stream_interval),
+        ("--kv-cache-memory-bytes", config.cache.kv_cache_memory_bytes),
+        ("--kv-cache-dtype", config.cache.cache_dtype),
+        ("--reasoning-parser", config.api.reasoning_parser),
+        ("--tool-call-parser", config.api.tool_call_parser),
+    )
+    for flag, value in optional:
+        if value is not None:
+            args += [flag, str(value)]
+    # vLLM defaults these to "decide at runtime" and exposes a --no-
+    # counterpart for each, so an explicit False has to be sent as
+    # --no-<flag>. Emitting nothing would leave vLLM's default in force
+    # and silently ignore the request to disable the feature.
+    tristate = (
+        ("enable-chunked-prefill", config.scheduler.enable_chunked_prefill),
+        ("async-scheduling", config.scheduler.async_scheduling),
+        ("enable-prefix-caching", config.cache.enable_prefix_caching),
+    )
+    for name, value in tristate:
+        if value is not None:
+            args += [f"--{name}" if value else f"--no-{name}"]
+    # Unlike the flags above, vLLM defaults this one to False, so
+    # omitting it already means "off".
+    if config.api.enable_auto_tool_choice:
+        args += ["--enable-auto-tool-choice"]
     return args
 
 
-class Worker:
-    """One ``vllm serve`` subprocess, on its own GPU set and port.
+def _serve_worker(serialized_config: dict[str, object]) -> None:
+    """Set CUDA visibility, then import and run vLLM in this child process."""
+    config = WorkerConfig.model_validate(serialized_config)
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
+        str(d) for d in config.gpu.devices
+    )
 
-    Parameters
-    ----------
-    config : atlas.schema.WorkerConfig
-        Configuration for this worker. `config.port` must already be
-        resolved to a concrete port (see `atlas.orchestrator`).
-    """
+    import uvloop  # noqa: PLC0415
+    from vllm.entrypoints.openai.api_server import (  # noqa: PLC0415
+        make_arg_parser,
+        run_server,
+    )
+    from vllm.entrypoints.openai.cli_args import (  # noqa: PLC0415
+        validate_parsed_serve_args,
+    )
+    from vllm.entrypoints.serve.utils.api_utils import (  # noqa: PLC0415
+        cli_env_setup,
+    )
+    from vllm.utils.argparse_utils import (  # noqa: PLC0415
+        FlexibleArgumentParser,
+    )
+
+    cli_env_setup()
+    parser = make_arg_parser(
+        FlexibleArgumentParser(description="Atlas vLLM server")
+    )
+    args = parser.parse_args(build_vllm_args(config))
+    validate_parsed_serve_args(args)
+    uvloop.run(run_server(args))
+
+
+class Worker:
+    """One spawned Python process hosting a programmatic vLLM server."""
 
     def __init__(self, config: WorkerConfig) -> None:
+        """Store one resolved worker configuration."""
         self.config = config
-        self._process: subprocess.Popen | None = None
-        self._pump_thread: threading.Thread | None = None
+        self._process: multiprocessing.Process | None = None
 
     @property
     def name(self) -> str:
-        """str: Display name for this worker, used in logs."""
+        """Return the configured display name."""
         return self.config.name
 
     def start(self) -> None:
-        """Launch the ``vllm serve`` subprocess for this worker."""
-        env = os.environ.copy()
-        env["CUDA_VISIBLE_DEVICES"] = ",".join(str(d) for d in self.config.gpu.devices)
-
-        command = build_command(self.config)
-        logger.bind(worker=self.name).info(f"launching: {' '.join(command)}")
-        self._process = subprocess.Popen(
-            command,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
+        """Start a fresh worker before it imports vLLM or Torch."""
+        context = multiprocessing.get_context("spawn")
+        self._process = context.Process(
+            target=_serve_worker,
+            args=(self.config.model_dump(mode="json"),),
+            name=f"{self.name}-vllm",
         )
-        self._pump_thread = threading.Thread(
-            target=self._pump_output, daemon=True, name=f"{self.name}-output"
+        logger.bind(worker=self.name).info(
+            f"launching vLLM server on {self.config.host}:{self.config.port}"
         )
-        self._pump_thread.start()
-
-    def _pump_output(self) -> None:
-        """Re-emit the subprocess's output through loguru as it arrives.
-
-        Splits on carriage returns as well as newlines. Progress bars (tqdm,
-        used by both the Hugging Face downloader and vLLM's weight loader)
-        redraw in place with ``\\r`` and emit no newline until the bar
-        finishes, so iterating the stream by line would buffer an entire
-        multi-hour download into a single line and display nothing until it
-        completed. Carriage-return updates are throttled to one every
-        `_PROGRESS_LOG_INTERVAL` seconds, since logging every redraw would
-        write millions of lines to the log file.
-        """
-        assert self._process is not None
-        assert self._process.stdout is not None
-
-        bound_logger = logger.bind(worker=self.name)
-        fd = self._process.stdout.fileno()
-        buffer = b""
-        last_progress = 0.0
-
-        while True:
-            chunk = os.read(fd, _READ_CHUNK_SIZE)
-            if not chunk:
-                break
-            buffer += chunk
-            while (match := _TERMINATOR_RE.search(buffer)) is not None:
-                text = buffer[: match.start()].decode("utf-8", errors="replace")
-                is_progress = match.group() == b"\r"
-                buffer = buffer[match.end() :]
-
-                text = text.rstrip()
-                if not text:
-                    continue
-                if is_progress:
-                    now = time.monotonic()
-                    if now - last_progress < _PROGRESS_LOG_INTERVAL:
-                        continue
-                    last_progress = now
-                bound_logger.info(text)
-
-        if (text := buffer.decode("utf-8", errors="replace").rstrip()) != "":
-            bound_logger.info(text)
+        self._process.start()
 
     def is_alive(self) -> bool:
-        """bool: Whether the subprocess is still running."""
-        return self._process is not None and self._process.poll() is None
+        """Return whether the spawned worker process is alive."""
+        return self._process is not None and self._process.is_alive()
 
     def exit_code(self) -> int | None:
-        """int, optional: The subprocess's exit code, or None if still running."""
-        return None if self._process is None else self._process.poll()
+        """Return the worker exit code, or None while it is still running."""
+        return None if self._process is None else self._process.exitcode
 
     def terminate(self, timeout: float = 15.0) -> None:
-        """Terminate this worker's process group.
-
-        Parameters
-        ----------
-        timeout : float, optional
-            Seconds to wait after each signal before escalating, by
-            default 15.0.
-        """
-        if self._process is None:
+        """Stop the worker, escalating from terminate to kill if required."""
+        if self._process is None or not self._process.is_alive():
             return
-        terminate_process_group(self._process, timeout=timeout)
-        if self._pump_thread is not None:
-            self._pump_thread.join(timeout=timeout)
+        self._process.terminate()
+        self._process.join(timeout)
+        if self._process.is_alive():
+            self._process.kill()
+            self._process.join(timeout)

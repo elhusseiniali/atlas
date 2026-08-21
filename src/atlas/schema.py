@@ -8,6 +8,95 @@ happens at construction time, before anything is launched.
 from pydantic import BaseModel, Field, model_validator
 
 
+class SchedulerConfig(BaseModel):
+    """vLLM scheduler settings for one worker.
+
+    Parameters
+    ----------
+    enable_chunked_prefill : bool, optional
+        Whether to split large prefills across scheduler steps, by
+        default None, meaning vLLM's own default applies. See the note
+        on three-state flags below.
+    async_scheduling : bool, optional
+        Whether to overlap scheduling with model execution, by default
+        None, meaning vLLM's own default applies.
+
+    Notes
+    -----
+    `enable_chunked_prefill` and `async_scheduling` are three-state
+    rather than plain booleans, because vLLM defaults them to "decide at
+    runtime" rather than to off. None leaves that decision to vLLM;
+    False disables the feature explicitly. A plain ``bool`` could not
+    express the difference, so writing False would be indistinguishable
+    from omitting the field and would silently leave vLLM's default in
+    force.
+    """
+
+    max_num_seqs: int | None = Field(default=None, gt=0)
+    max_num_batched_tokens: int | None = Field(default=None, gt=0)
+    max_num_scheduled_tokens: int | None = Field(default=None, gt=0)
+    enable_chunked_prefill: bool | None = None
+    scheduling_policy: str | None = None
+    async_scheduling: bool | None = None
+    stream_interval: int | None = Field(default=None, gt=0)
+
+
+class CacheConfig(BaseModel):
+    """vLLM KV-cache settings for one worker.
+
+    Parameters
+    ----------
+    enable_prefix_caching : bool, optional
+        Whether to reuse KV cache across shared prompt prefixes, by
+        default None, meaning vLLM's own default applies. This is
+        three-state for the reason given in
+        `atlas.schema.SchedulerConfig`.
+    """
+
+    enable_prefix_caching: bool | None = None
+    kv_cache_memory_bytes: int | None = Field(default=None, gt=0)
+    cache_dtype: str | None = None
+
+
+class APIConfig(BaseModel):
+    """OpenAI-compatible vLLM endpoint settings for one worker.
+
+    Parameters
+    ----------
+    reasoning_parser : str, optional
+        Parser vLLM uses to split reasoning content out of responses, by
+        default None.
+    enable_auto_tool_choice : bool, optional
+        Whether to let the model choose tools automatically, by default
+        False, which matches vLLM's own default. Requires
+        `tool_call_parser`.
+    tool_call_parser : str, optional
+        Parser vLLM uses to extract tool calls from responses, by
+        default None.
+
+    Raises
+    ------
+    ValueError
+        If `enable_auto_tool_choice` is set without a
+        `tool_call_parser`. vLLM enforces this too, but only once the
+        worker has been spawned, which would surface as an opaque
+        nonzero exit code after other workers had already started
+        loading weights.
+    """
+
+    reasoning_parser: str | None = None
+    enable_auto_tool_choice: bool = False
+    tool_call_parser: str | None = None
+
+    @model_validator(mode="after")
+    def _require_tool_call_parser(self) -> "APIConfig":
+        if self.enable_auto_tool_choice and self.tool_call_parser is None:
+            raise ValueError(
+                "enable_auto_tool_choice requires tool_call_parser"
+            )
+        return self
+
+
 class GPUConfig(BaseModel):
     """GPU placement and safety settings for one worker.
 
@@ -15,7 +104,7 @@ class GPUConfig(BaseModel):
     ----------
     devices : list[int]
         GPU indices (as reported by ``nvidia-smi``) this worker's
-        ``vllm serve`` process should see, via ``CUDA_VISIBLE_DEVICES``.
+        vLLM server process should see, via ``CUDA_VISIBLE_DEVICES``.
     tensor_parallel_size : int, optional
         Number of GPUs to shard the model across, by default None, in
         which case it's derived from ``len(devices)``. If given
@@ -37,14 +126,15 @@ class GPUConfig(BaseModel):
             self.tensor_parallel_size = len(self.devices)
         elif self.tensor_parallel_size != len(self.devices):
             raise ValueError(
-                f"tensor_parallel_size ({self.tensor_parallel_size}) must equal "
+                f"tensor_parallel_size ({self.tensor_parallel_size}) must "
+                "equal "
                 f"len(devices) ({len(self.devices)})"
             )
         return self
 
 
 class WorkerConfig(BaseModel):
-    """Configuration for a single ``vllm serve`` worker.
+    """Configuration for a single vLLM server worker.
 
     Parameters
     ----------
@@ -68,10 +158,6 @@ class WorkerConfig(BaseModel):
         Fraction of GPU memory vLLM may reserve, by default 0.9.
     quantization : str, optional
         Quantization method passed to vLLM, by default None.
-    extra_args : list[str], optional
-        Additional raw CLI arguments appended to the ``vllm serve``
-        command, as an escape hatch for flags this schema doesn't model
-        directly, by default an empty list.
     """
 
     model: str
@@ -83,7 +169,9 @@ class WorkerConfig(BaseModel):
     max_model_len: int | None = None
     gpu_memory_utilization: float = Field(default=0.9, gt=0.0, le=1.0)
     quantization: str | None = None
-    extra_args: list[str] = Field(default_factory=list)
+    scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
+    cache: CacheConfig = Field(default_factory=CacheConfig)
+    api: APIConfig = Field(default_factory=APIConfig)
 
     @property
     def name(self) -> str:
