@@ -1,6 +1,6 @@
 # Atlas
 
-Atlas launches and supervises local `vllm serve` processes from a Python
+Atlas launches and supervises local vLLM server workers from a Python
 configuration file. Define one or more workers in `config.py`, then start
 them with:
 
@@ -16,7 +16,7 @@ Atlas writes its output, including each worker's vLLM logs, to `atlas.log`.
 server process.
 
 ```python
-from atlas.schema import GPUConfig, WorkerConfig
+from atlas.schema import APIConfig, GPUConfig, WorkerConfig
 
 WORKERS = [
     WorkerConfig(
@@ -25,13 +25,11 @@ WORKERS = [
         gpu=GPUConfig(devices=[0, 1]),
         gpu_memory_utilization=0.9,
         max_model_len=32768,
-        extra_args=[
-            "--reasoning-parser",
-            "qwen3",
-            "--enable-auto-tool-choice",
-            "--tool-call-parser",
-            "qwen3_coder",
-        ],
+        api=APIConfig(
+            reasoning_parser="qwen3",
+            enable_auto_tool_choice=True,
+            tool_call_parser="qwen3_coder",
+        ),
     ),
 ]
 ```
@@ -44,7 +42,8 @@ The main settings are:
 - `gpu_memory_utilization`: fraction of each assigned GPU's memory vLLM may
   reserve; defaults to `0.9`.
 - `max_model_len`: maximum context length. Omit it to use vLLM's default.
-- `extra_args`: additional vLLM command-line flags.
+- `scheduler`, `cache`, and `api`: typed vLLM scheduling, KV-cache,
+  and OpenAI endpoint settings.
 
 ### GPU assignment and preflight check
 

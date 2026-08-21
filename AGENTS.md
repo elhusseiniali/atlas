@@ -2,9 +2,9 @@
 
 ## Project overview
 
-Atlas is a configuration-driven launcher for one or more local `vllm serve`
+Atlas is a configuration-driven launcher for one or more local vLLM server
 workers. Users define workers in the root-level `config.py`; Atlas validates,
-launches, logs, and supervises the resulting vLLM subprocesses.
+launches and supervises independently spawned vLLM server workers.
 
 ## Repository map
 
@@ -13,7 +13,7 @@ launches, logs, and supervises the resulting vLLM subprocesses.
 - `src/atlas/schema.py`: Pydantic configuration schemas and validation.
 - `src/atlas/orchestrator.py`: port resolution, GPU preflight checks, worker
   launch order, and lifecycle supervision.
-- `src/atlas/worker.py`: vLLM command construction and subprocess ownership.
+- `src/atlas/worker.py`: typed vLLM argument construction and spawned-worker ownership.
 - `src/atlas/utils/gpu.py`: GPU memory checks implemented through
   `nvidia-smi`.
 - `README.md`: operator-facing installation, configuration, and
@@ -35,15 +35,15 @@ launches, logs, and supervises the resulting vLLM subprocesses.
 
 ## Configuration conventions
 
-- Each entry in `WORKERS` creates one `vllm serve` process.
+- Each entry in `WORKERS` creates one vLLM server worker.
 - `GPUConfig.devices` contains physical GPU indices, which Atlas passes to the
   worker through `CUDA_VISIBLE_DEVICES`.
 - A physical GPU may be assigned to only one worker; overlapping worker GPU
   assignments are rejected before preflight checks run.
 - Tensor parallelism defaults to the number of listed devices. If
   `tensor_parallel_size` is explicit, it must equal `len(devices)`.
-- Keep model-specific vLLM flags in `extra_args` unless the option belongs in
-  the shared `WorkerConfig` schema.
+- Add supported model-serving settings to the shared `WorkerConfig` schema;
+  do not pass unvalidated raw vLLM command-line arguments through Atlas.
 - Preserve explicit port assignments. Unspecified ports are assigned from
   `8000`, in `WORKERS` order, while skipping explicitly reserved ports.
 - Do not silently change a model, GPU placement, context length,
@@ -70,7 +70,7 @@ launches, logs, and supervises the resulting vLLM subprocesses.
 - Use `uv run ...` for project commands.
 - Prefer focused unit tests for schema validation, port resolution, command
   construction, GPU checks, and process lifecycle changes. Mock
-  subprocesses and `nvidia-smi`; ordinary tests should not require real GPUs
+  spawned workers and `nvidia-smi`; ordinary tests should not require real GPUs
   or downloaded models.
 - Run the relevant checks after edits. At minimum, run Ruff for Python
   changes; run affected tests when they exist.
@@ -81,8 +81,8 @@ launches, logs, and supervises the resulting vLLM subprocesses.
 
 ## Runtime diagnosis and verification
 
-- Read `atlas.log` first when diagnosing a failed launch. It contains the
-  vLLM subprocess output under the worker name.
+- Read `atlas.log` first when diagnosing a failed launch. It records Atlas
+  worker lifecycle events.
 - A process launch is not proof that a model is ready. Confirm that the API
   server completed startup, then query `/v1/models` or send a small
   OpenAI-compatible request using the configured `served_model_name`.
