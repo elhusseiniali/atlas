@@ -13,13 +13,28 @@ class SchedulerConfig(BaseModel):
 
     Parameters
     ----------
+    max_num_seqs : int, optional
+        Maximum number of sequences vLLM may process concurrently, by
+        default None, meaning vLLM's own default applies.
+    max_num_batched_tokens : int, optional
+        Maximum tokens vLLM may include in one scheduled batch, by
+        default None, meaning vLLM's own default applies.
+    max_num_scheduled_tokens : int, optional
+        Maximum tokens vLLM may schedule in one iteration, by default
+        None, meaning vLLM's own default applies.
     enable_chunked_prefill : bool, optional
         Whether to split large prefills across scheduler steps, by
         default None, meaning vLLM's own default applies. See the note
         on three-state flags below.
+    scheduling_policy : str, optional
+        vLLM scheduling policy to use, by default None, meaning vLLM's
+        own default applies.
     async_scheduling : bool, optional
         Whether to overlap scheduling with model execution, by default
         None, meaning vLLM's own default applies.
+    stream_interval : int, optional
+        Number of generation steps between streamed response updates, by
+        default None, meaning vLLM's own default applies.
 
     Notes
     -----
@@ -51,6 +66,13 @@ class CacheConfig(BaseModel):
         default None, meaning vLLM's own default applies. This is
         three-state for the reason given in
         `atlas.schema.SchedulerConfig`.
+    kv_cache_memory_bytes : int, optional
+        Fixed number of bytes allocated to vLLM's KV cache, by default
+        None, meaning vLLM calculates the cache size from available GPU
+        memory.
+    cache_dtype : str, optional
+        Data type to use for the KV cache, by default None, meaning
+        vLLM's own default applies.
     """
 
     enable_prefix_caching: bool | None = None
