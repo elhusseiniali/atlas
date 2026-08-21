@@ -6,8 +6,8 @@ import subprocess
 import threading
 import time
 
-from atlas.config import WorkerConfig
 from atlas.log import logger
+from atlas.schema import WorkerConfig
 from atlas.utils.process import terminate_process_group
 
 # Progress bars redraw with "\r"; regular log lines end with "\n".
@@ -21,7 +21,7 @@ def build_command(config: WorkerConfig) -> list[str]:
 
     Parameters
     ----------
-    config : atlas.config.WorkerConfig
+    config : atlas.schema.WorkerConfig
         Worker configuration to translate.
 
     Returns
@@ -59,7 +59,7 @@ class Worker:
 
     Parameters
     ----------
-    config : atlas.config.WorkerConfig
+    config : atlas.schema.WorkerConfig
         Configuration for this worker. `config.port` must already be
         resolved to a concrete port (see `atlas.orchestrator`).
     """

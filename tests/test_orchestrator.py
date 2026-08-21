@@ -2,8 +2,8 @@
 
 import pytest
 
-from atlas.config import GPUConfig, WorkerConfig
 from atlas.orchestrator import Orchestrator, _check_gpus, _resolve_ports
+from atlas.schema import GPUConfig, WorkerConfig
 from atlas.utils.gpu import GPUUnavailableError
 
 _DEFAULT_PORT = 8000

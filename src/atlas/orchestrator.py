@@ -4,8 +4,8 @@ import signal
 import time
 from types import FrameType
 
-from atlas.config import WorkerConfig
 from atlas.log import logger
+from atlas.schema import WorkerConfig
 from atlas.utils.gpu import GPUUnavailableError, check_gpu_availability
 from atlas.worker import Worker
 
@@ -18,7 +18,7 @@ def _resolve_ports(configs: list[WorkerConfig]) -> None:
 
     Parameters
     ----------
-    configs : list[atlas.config.WorkerConfig]
+    configs : list[atlas.schema.WorkerConfig]
         Worker configs to resolve ports for.
 
     Raises
@@ -75,7 +75,7 @@ class Orchestrator:
 
     Parameters
     ----------
-    configs : list[atlas.config.WorkerConfig]
+    configs : list[atlas.schema.WorkerConfig]
         Worker configurations to run.
     """
 
@@ -150,7 +150,7 @@ def run(configs: list[WorkerConfig]) -> int:
 
     Parameters
     ----------
-    configs : list[atlas.config.WorkerConfig]
+    configs : list[atlas.schema.WorkerConfig]
         Worker configurations to run.
 
     Returns

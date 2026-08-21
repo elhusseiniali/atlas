@@ -10,7 +10,7 @@ launches, logs, and supervises the resulting vLLM subprocesses.
 
 - `config.py`: user-facing worker configuration. Keep it concise, readable,
   and directly runnable.
-- `src/atlas/config.py`: Pydantic configuration schemas and validation.
+- `src/atlas/schema.py`: Pydantic configuration schemas and validation.
 - `src/atlas/orchestrator.py`: port resolution, GPU preflight checks, worker
   launch order, and lifecycle supervision.
 - `src/atlas/worker.py`: vLLM command construction and subprocess ownership.

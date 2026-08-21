@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from atlas.config import GPUConfig, WorkerConfig
+from atlas.schema import GPUConfig, WorkerConfig
 from atlas.worker import Worker, build_command
 
 

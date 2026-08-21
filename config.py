@@ -1,11 +1,11 @@
 """atlas worker configuration.
 
 Edit this file to describe the model(s) you want to serve, then run
-``uv run atlas`` from this directory. Each `atlas.config.WorkerConfig`
+``uv run atlas`` from this directory. Each `atlas.schema.WorkerConfig`
 becomes one ``vllm serve`` process on its own GPU set and port.
 """
 
-from atlas.config import GPUConfig, WorkerConfig
+from atlas.schema import GPUConfig, WorkerConfig
 
 WORKERS = [
     # Qwen3.8-27B is a 27B BF16 multimodal model. Its ~52 GiB of weights do

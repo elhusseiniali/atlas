@@ -5,9 +5,9 @@ import importlib.util
 import sys
 from pathlib import Path
 
-from atlas.config import WorkerConfig
 from atlas.log import DEFAULT_LOG_FILE, configure_logging, logger
 from atlas.orchestrator import run as run_workers
+from atlas.schema import WorkerConfig
 
 _DEFAULT_CONFIG_PATH = Path("config.py")
 
@@ -19,11 +19,11 @@ def load_config(path: Path) -> list[WorkerConfig]:
     ----------
     path : pathlib.Path
         Path to a Python file defining a module-level ``WORKERS`` list of
-        `atlas.config.WorkerConfig`.
+        `atlas.schema.WorkerConfig`.
 
     Returns
     -------
-    list[atlas.config.WorkerConfig]
+    list[atlas.schema.WorkerConfig]
         The loaded workers.
 
     Raises

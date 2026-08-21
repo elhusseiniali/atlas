@@ -1,4 +1,4 @@
-"""Pydantic schema for worker configuration.
+"""Pydantic schemas for worker configuration.
 
 The root-level ``config.py`` that a user edits imports :class:`WorkerConfig`
 (and :class:`GPUConfig`) from here to build a ``WORKERS`` list. Validation
@@ -50,7 +50,7 @@ class WorkerConfig(BaseModel):
     ----------
     model : str
         Model repo id (e.g. a Hugging Face path) or local path to serve.
-    gpu : atlas.config.GPUConfig
+    gpu : atlas.schema.GPUConfig
         GPU placement and safety settings for this worker.
     served_model_name : str, optional
         Name clients use to request this model, by default None, in

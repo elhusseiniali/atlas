@@ -11,7 +11,7 @@ def test_load_config_returns_workers_from_python_file(tmp_path: Path) -> None:
     """Load the module-level worker list from a user configuration file."""
     config_path = tmp_path / "workers.py"
     config_path.write_text(
-        "from atlas.config import GPUConfig, WorkerConfig\n"
+        "from atlas.schema import GPUConfig, WorkerConfig\n"
         "WORKERS = [WorkerConfig(model='example/model', gpu=GPUConfig(devices=[0]))]\n"
     )
 

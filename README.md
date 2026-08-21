@@ -16,7 +16,7 @@ Atlas writes its output, including each worker's vLLM logs, to `atlas.log`.
 server process.
 
 ```python
-from atlas.config import GPUConfig, WorkerConfig
+from atlas.schema import GPUConfig, WorkerConfig
 
 WORKERS = [
     WorkerConfig(

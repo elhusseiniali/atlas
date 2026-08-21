@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from atlas.config import GPUConfig, WorkerConfig
+from atlas.schema import GPUConfig, WorkerConfig
 
 _TWO_GPU_COUNT = 2
 
