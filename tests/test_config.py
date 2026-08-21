@@ -46,6 +46,17 @@ def test_invalid_gpu_memory_utilization_is_rejected(value: float) -> None:
         )
 
 
+@pytest.mark.parametrize("port", [0, -1, 65536])
+def test_invalid_port_is_rejected(port: int) -> None:
+    """Reject ports outside the TCP port range."""
+    with pytest.raises(ValidationError):
+        WorkerConfig(
+            model="example/model",
+            gpu=GPUConfig(devices=[0]),
+            port=port,
+        )
+
+
 def test_worker_name_prefers_served_model_name() -> None:
     """Use the request-facing model name for worker display names."""
     named = WorkerConfig(

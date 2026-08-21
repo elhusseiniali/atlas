@@ -38,6 +38,26 @@ def test_load_config_rejects_missing_workers(tmp_path: Path) -> None:
         cli.load_config(config_path)
 
 
+@pytest.mark.parametrize(
+    ("contents", "message"),
+    [
+        ("WORKERS = ()\n", "must be a list"),
+        ("WORKERS = [object()]\n", "must contain only WorkerConfig"),
+    ],
+)
+def test_load_config_rejects_invalid_worker_definitions(
+    tmp_path: Path,
+    contents: str,
+    message: str,
+) -> None:
+    """Reject non-list or non-WorkerConfig ``WORKERS`` definitions."""
+    config_path = tmp_path / "workers.py"
+    config_path.write_text(contents)
+
+    with pytest.raises(TypeError, match=message):
+        cli.load_config(config_path)
+
+
 def test_main_passes_configured_workers_to_orchestrator(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

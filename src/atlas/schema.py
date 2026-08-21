@@ -164,7 +164,7 @@ class WorkerConfig(BaseModel):
     gpu: GPUConfig
     served_model_name: str | None = None
     host: str = "0.0.0.0"
-    port: int | None = None
+    port: int | None = Field(default=None, ge=1, le=65535)
     dtype: str = "auto"
     max_model_len: int | None = None
     gpu_memory_utilization: float = Field(default=0.9, gt=0.0, le=1.0)

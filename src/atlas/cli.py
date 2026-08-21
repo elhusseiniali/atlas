@@ -5,7 +5,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-from atlas.log import DEFAULT_LOG_FILE, configure_logging, logger
+from atlas.log import configure_logging, logger
 from atlas.orchestrator import run as run_workers
 from atlas.schema import WorkerConfig
 
@@ -32,6 +32,8 @@ def load_config(path: Path) -> list[WorkerConfig]:
         If `path` doesn't exist.
     AttributeError
         If the loaded module has no ``WORKERS`` attribute.
+    TypeError
+        If ``WORKERS`` is not a list of `atlas.schema.WorkerConfig` instances.
     """
     if not path.exists():
         raise FileNotFoundError(f"config file not found: {path}")
@@ -45,6 +47,10 @@ def load_config(path: Path) -> list[WorkerConfig]:
     workers = getattr(module, "WORKERS", None)
     if workers is None:
         raise AttributeError(f"{path} has no module-level 'WORKERS' list")
+    if not isinstance(workers, list):
+        raise TypeError(f"{path} 'WORKERS' must be a list of WorkerConfig")
+    if not all(isinstance(worker, WorkerConfig) for worker in workers):
+        raise TypeError(f"{path} 'WORKERS' must contain only WorkerConfig")
     return workers
 
 
