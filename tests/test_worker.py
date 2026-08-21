@@ -1,8 +1,11 @@
 """Tests for programmatic vLLM worker configuration and lifecycle."""
 
+import builtins
+
 import pytest
 from pydantic import ValidationError
 
+from atlas import worker as worker_module
 from atlas.schema import (
     APIConfig,
     CacheConfig,
@@ -164,6 +167,69 @@ def test_build_vllm_args_parses_into_vllms_engine_model_field() -> None:
     assert args.served_model_name == ["example"]
     assert args.tensor_parallel_size == _TENSOR_PARALLEL_SIZE
     assert args.max_model_len == _MAX_MODEL_LEN
+
+
+def test_serve_worker_logs_startup_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Configure child logging and record an exception before re-raising."""
+    calls: dict[str, object] = {}
+    messages: list[tuple[str, str]] = []
+
+    class BoundLogger:
+        """Logger double that records lifecycle messages."""
+
+        def info(self, message: str) -> None:
+            messages.append(("info", message))
+
+        def exception(self, message: str) -> None:
+            messages.append(("exception", message))
+
+    class Logger:
+        """Logger double that binds one worker name."""
+
+        def bind(self, **kwargs: object) -> BoundLogger:
+            calls["worker"] = kwargs["worker"]
+            return BoundLogger()
+
+    def fail_uvloop_import(
+        name: str,
+        globals: object = None,
+        locals: object = None,
+        fromlist: tuple[object, ...] = (),
+        level: int = 0,
+    ) -> object:
+        if name == "uvloop":
+            raise ImportError("uvloop unavailable")
+        return original_import(name, globals, locals, fromlist, level)
+
+    def record_logging_configuration(**kwargs: object) -> None:
+        calls["logging"] = kwargs
+
+    original_import = builtins.__import__
+    monkeypatch.setattr(worker_module, "logger", Logger())
+    monkeypatch.setattr(
+        worker_module,
+        "configure_logging",
+        record_logging_configuration,
+    )
+    monkeypatch.setattr(builtins, "__import__", fail_uvloop_import)
+    config = WorkerConfig(
+        model="example/model",
+        served_model_name="example",
+        port=8000,
+        gpu=GPUConfig(devices=[0]),
+    )
+
+    with pytest.raises(ImportError, match="uvloop unavailable"):
+        worker_module._serve_worker(config.model_dump(mode="json"))
+
+    assert calls["logging"] == {"log_file": worker_module.DEFAULT_LOG_FILE}
+    assert calls["worker"] == "example"
+    assert messages == [
+        ("info", "initializing vLLM server with CUDA_VISIBLE_DEVICES=0"),
+        ("exception", "vLLM worker failed"),
+    ]
 
 
 def test_worker_spawns_process_without_importing_vllm(

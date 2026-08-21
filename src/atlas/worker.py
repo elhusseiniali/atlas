@@ -3,7 +3,7 @@
 import multiprocessing
 import os
 
-from atlas.log import logger
+from atlas.log import DEFAULT_LOG_FILE, configure_logging, logger
 from atlas.schema import WorkerConfig
 
 
@@ -66,32 +66,44 @@ def build_vllm_args(config: WorkerConfig) -> list[str]:
 def _serve_worker(serialized_config: dict[str, object]) -> None:
     """Set CUDA visibility, then import and run vLLM in this child process."""
     config = WorkerConfig.model_validate(serialized_config)
+    configure_logging(log_file=DEFAULT_LOG_FILE)
+    worker_logger = logger.bind(worker=config.name)
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
         str(d) for d in config.gpu.devices
     )
-
-    import uvloop  # noqa: PLC0415
-    from vllm.entrypoints.openai.api_server import (  # noqa: PLC0415
-        make_arg_parser,
-        run_server,
-    )
-    from vllm.entrypoints.openai.cli_args import (  # noqa: PLC0415
-        validate_parsed_serve_args,
-    )
-    from vllm.entrypoints.serve.utils.api_utils import (  # noqa: PLC0415
-        cli_env_setup,
-    )
-    from vllm.utils.argparse_utils import (  # noqa: PLC0415
-        FlexibleArgumentParser,
+    worker_logger.info(
+        "initializing vLLM server with "
+        f"CUDA_VISIBLE_DEVICES={os.environ['CUDA_VISIBLE_DEVICES']}"
     )
 
-    cli_env_setup()
-    parser = make_arg_parser(
-        FlexibleArgumentParser(description="Atlas vLLM server")
-    )
-    args = parser.parse_args(build_vllm_args(config))
-    validate_parsed_serve_args(args)
-    uvloop.run(run_server(args))
+    try:
+        import uvloop  # noqa: PLC0415
+        from vllm.entrypoints.openai.api_server import (  # noqa: PLC0415
+            make_arg_parser,
+            run_server,
+        )
+        from vllm.entrypoints.openai.cli_args import (  # noqa: PLC0415
+            validate_parsed_serve_args,
+        )
+        from vllm.entrypoints.serve.utils.api_utils import (  # noqa: PLC0415
+            cli_env_setup,
+        )
+        from vllm.utils.argparse_utils import (  # noqa: PLC0415
+            FlexibleArgumentParser,
+        )
+
+        cli_env_setup()
+        parser = make_arg_parser(
+            FlexibleArgumentParser(description="Atlas vLLM server")
+        )
+        args = parser.parse_args(build_vllm_args(config))
+        validate_parsed_serve_args(args)
+        worker_logger.info("starting vLLM server")
+        uvloop.run(run_server(args))
+        worker_logger.info("vLLM server stopped")
+    except Exception:
+        worker_logger.exception("vLLM worker failed")
+        raise
 
 
 class Worker:
