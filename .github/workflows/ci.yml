@@ -31,7 +31,7 @@ jobs:
         with:
           enable-cache: true
 
-      # Atlas launches vLLM as a subprocess and the unit suite is GPU-free.
+      # Atlas's unit suite is GPU-free and delays vLLM imports to its workers.
       # Keep CI fast by installing only dependencies required to import and
       # test Atlas, rather than the vLLM/CUDA runtime stack.
       - name: Lint
