@@ -70,19 +70,12 @@ def main() -> None:
         default="INFO",
         help="minimum log level to emit (default: INFO)",
     )
-    parser.add_argument(
-        "--log-file",
-        default=str(DEFAULT_LOG_FILE),
-        help=f"path to append logs to (default: {DEFAULT_LOG_FILE}); "
-        "pass an empty string to disable file logging",
-    )
     args = parser.parse_args()
 
-    log_file = Path(args.log_file) if args.log_file else None
-    configure_logging(level=args.log_level, log_file=log_file)
+    configure_logging(level=args.log_level)
     try:
         workers = load_config(args.config)
-    except (FileNotFoundError, AttributeError, ImportError) as exc:
+    except (FileNotFoundError, AttributeError, ImportError, TypeError) as exc:
         logger.error(str(exc))
         sys.exit(1)
 

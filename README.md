@@ -8,7 +8,8 @@ them with:
 uv run atlas
 ```
 
-Atlas writes its output, including each worker's vLLM logs, to `atlas.log`.
+Atlas writes its own lifecycle events, including worker startup, shutdown, and
+top-level failures, to `atlas.log`. It does not capture every vLLM engine log.
 
 ## Configuring workers
 

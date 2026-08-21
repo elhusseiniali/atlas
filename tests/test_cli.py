@@ -75,10 +75,10 @@ def test_main_passes_configured_workers_to_orchestrator(
     )
     monkeypatch.setattr(
         "sys.argv",
-        ["atlas", "--config", str(tmp_path / "config.py"), "--log-file", ""],
+        ["atlas", "--config", str(tmp_path / "config.py")],
     )
 
     with pytest.raises(SystemExit, match="7"):
         cli.main()
 
-    assert configured == {"level": "INFO", "log_file": None}
+    assert configured == {"level": "INFO"}
