@@ -1,4 +1,4 @@
-"""Loguru setup, shared by the orchestrator, workers, and piped subprocess output.
+"""Loguru setup shared by the Atlas parent process and worker lifecycle code.
 
 Import the configured logger as ``from atlas.log import logger`` everywhere
 else in the package.

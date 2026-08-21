@@ -95,7 +95,9 @@ def get_gpu_memory_usage(
     usage: dict[int, GPUMemoryInfo] = {}
     try:
         for line in result.stdout.strip().splitlines():
-            index_str, used_str, total_str = (part.strip() for part in line.split(","))
+            index_str, used_str, total_str = (
+                part.strip() for part in line.split(",")
+            )
             index = int(index_str)
             usage[index] = GPUMemoryInfo(
                 index=index, used_mib=int(used_str), total_mib=int(total_str)
@@ -115,7 +117,9 @@ def get_gpu_memory_usage(
     return usage
 
 
-def check_gpu_availability(devices: Sequence[int], max_used_fraction: float) -> None:
+def check_gpu_availability(
+    devices: Sequence[int], max_used_fraction: float
+) -> None:
     """Check that `devices` have enough free VRAM to be used.
 
     Parameters

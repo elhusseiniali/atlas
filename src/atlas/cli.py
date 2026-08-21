@@ -1,4 +1,4 @@
-"""Command-line entry point: load the user's config.py and run the fleet."""
+"""Command-line entry point: load the user's config.py and run its workers."""
 
 import argparse
 import importlib.util
@@ -51,7 +51,7 @@ def load_config(path: Path) -> list[WorkerConfig]:
 def main() -> None:
     """Entry point for the ``atlas`` console script."""
     parser = argparse.ArgumentParser(
-        description="Launch a fleet of local vLLM servers from a config file."
+        description="Launch local vLLM servers from a config file."
     )
     parser.add_argument(
         "--config",

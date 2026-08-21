@@ -9,7 +9,9 @@ from atlas.utils.gpu import GPUUnavailableError
 _DEFAULT_PORT = 8000
 
 
-def _worker(name: str, devices: list[int], port: int | None = None) -> WorkerConfig:
+def _worker(
+    name: str, devices: list[int], port: int | None = None
+) -> WorkerConfig:
     """Build a minimal worker configuration for orchestration tests.
 
     Parameters
@@ -58,7 +60,10 @@ def test_automatic_ports_skip_explicit_reservations() -> None:
 
 def test_duplicate_explicit_ports_are_rejected() -> None:
     """Reject workers that explicitly claim the same HTTP port."""
-    configs = [_worker("first", [0], port=8000), _worker("second", [1], port=8000)]
+    configs = [
+        _worker("first", [0], port=8000),
+        _worker("second", [1], port=8000),
+    ]
 
     with pytest.raises(ValueError, match="duplicate explicit ports"):
         _resolve_ports(configs)
@@ -83,7 +88,7 @@ def test_overlapping_worker_gpu_assignments_are_rejected(
 def test_gpu_preflight_uses_each_workers_threshold(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Pass configured device lists and thresholds to GPU availability checks."""
+    """Pass configured device lists and thresholds to GPU checks."""
     checked: list[tuple[list[int], float]] = []
     monkeypatch.setattr(
         "atlas.orchestrator.check_gpu_availability",
@@ -127,7 +132,9 @@ def test_launch_failure_terminates_previously_started_workers(
             self.terminated = True
 
     monkeypatch.setattr("atlas.orchestrator.Worker", FakeWorker)
-    orchestrator = Orchestrator([_worker("first", [0]), _worker("second", [1])])
+    orchestrator = Orchestrator(
+        [_worker("first", [0]), _worker("second", [1])]
+    )
 
     assert orchestrator._launch_all() is False
     assert created[0].terminated is True
@@ -166,7 +173,7 @@ def test_supervise_terminates_live_workers_on_shutdown() -> None:
 def test_run_stops_before_launch_when_gpu_preflight_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Return a failure status without installing handlers or launching workers."""
+    """Return failure without installing handlers or launching workers."""
     orchestrator = Orchestrator([_worker("example", [0])])
     monkeypatch.setattr(
         "atlas.orchestrator._check_gpus",
@@ -191,12 +198,16 @@ def test_run_resolves_ports_then_launches_and_supervises(
         "atlas.orchestrator._check_gpus", lambda configs: calls.append("gpu")
     )
     monkeypatch.setattr(
-        orchestrator, "_install_signal_handlers", lambda: calls.append("signals")
+        orchestrator,
+        "_install_signal_handlers",
+        lambda: calls.append("signals"),
     )
     monkeypatch.setattr(
         orchestrator, "_launch_all", lambda: calls.append("launch") or True
     )
-    monkeypatch.setattr(orchestrator, "_supervise", lambda: calls.append("supervise"))
+    monkeypatch.setattr(
+        orchestrator, "_supervise", lambda: calls.append("supervise")
+    )
 
     assert orchestrator.run() == 0
     assert orchestrator._configs[0].port == _DEFAULT_PORT

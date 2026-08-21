@@ -1,4 +1,4 @@
-"""Validates, launches, and supervises a fleet of workers."""
+"""Validates, launches, and supervises configured workers."""
 
 import signal
 import time
@@ -28,7 +28,9 @@ def _resolve_ports(configs: list[WorkerConfig]) -> None:
     """
     explicit = [c.port for c in configs if c.port is not None]
     if len(explicit) != len(set(explicit)):
-        raise ValueError(f"duplicate explicit ports in worker configs: {explicit}")
+        raise ValueError(
+            f"duplicate explicit ports in worker configs: {explicit}"
+        )
 
     taken = set(explicit)
     next_port = _DEFAULT_BASE_PORT
@@ -67,11 +69,13 @@ def _check_gpus(configs: list[WorkerConfig]) -> None:
             assigned[device] = config.name
 
     for config in configs:
-        check_gpu_availability(config.gpu.devices, config.gpu.max_used_memory_fraction)
+        check_gpu_availability(
+            config.gpu.devices, config.gpu.max_used_memory_fraction
+        )
 
 
 class Orchestrator:
-    """Validates, launches, and supervises every worker in a fleet.
+    """Validates, launches, and supervises configured workers.
 
     Parameters
     ----------
@@ -85,7 +89,7 @@ class Orchestrator:
         self._shutdown = False
 
     def run(self) -> int:
-        """Validate, launch, and supervise the fleet until shutdown.
+        """Validate, launch, and supervise workers until shutdown.
 
         Returns
         -------
@@ -133,7 +137,8 @@ class Orchestrator:
                 if not worker.is_alive():
                     logger.error(
                         f"worker '{worker.name}' exited unexpectedly "
-                        f"(code {worker.exit_code()}); leaving other workers running."
+                        f"(code {worker.exit_code()}); leaving other workers "
+                        "running."
                     )
                     active.remove(worker)
             if active:
@@ -146,7 +151,7 @@ class Orchestrator:
 
 
 def run(configs: list[WorkerConfig]) -> int:
-    """Validate, launch, and supervise a fleet of workers until shutdown.
+    """Validate, launch, and supervise workers until shutdown.
 
     Parameters
     ----------

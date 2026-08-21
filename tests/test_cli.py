@@ -12,7 +12,9 @@ def test_load_config_returns_workers_from_python_file(tmp_path: Path) -> None:
     config_path = tmp_path / "workers.py"
     config_path.write_text(
         "from atlas.schema import GPUConfig, WorkerConfig\n"
-        "WORKERS = [WorkerConfig(model='example/model', gpu=GPUConfig(devices=[0]))]\n"
+        "WORKERS = [WorkerConfig("
+        "model='example/model', gpu=GPUConfig(devices=[0])"
+        ")]\n"
     )
 
     workers = cli.load_config(config_path)

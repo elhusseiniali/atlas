@@ -28,7 +28,9 @@ def _completed(output: str) -> subprocess.CompletedProcess[str]:
     subprocess.CompletedProcess[str]
         Successful command result containing the supplied output.
     """
-    return subprocess.CompletedProcess(["nvidia-smi"], 0, stdout=output, stderr="")
+    return subprocess.CompletedProcess(
+        ["nvidia-smi"], 0, stdout=output, stderr=""
+    )
 
 
 def test_get_gpu_memory_usage_parses_requested_devices(
@@ -47,7 +49,9 @@ def test_get_gpu_memory_usage_parses_requested_devices(
     assert usage[1].used_fraction == _USED_FRACTION
 
 
-def test_missing_requested_gpu_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_missing_requested_gpu_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Report a requested GPU that nvidia-smi did not return."""
     monkeypatch.setattr(
         "atlas.utils.gpu.subprocess.run",
