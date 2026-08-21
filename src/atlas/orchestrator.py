@@ -114,7 +114,7 @@ class Orchestrator:
             worker = Worker(config)
             try:
                 worker.start()
-            except OSError as exc:
+            except (OSError, RuntimeError) as exc:
                 logger.error(f"failed to launch worker '{config.name}': {exc}")
                 for started in self._workers:
                     started.terminate()

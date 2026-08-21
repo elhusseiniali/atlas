@@ -107,8 +107,10 @@ def test_gpu_preflight_uses_each_workers_threshold(
     assert checked == [([0], 0.5), ([1], 0.75)]
 
 
+@pytest.mark.parametrize("error_type", [OSError, RuntimeError])
 def test_launch_failure_terminates_previously_started_workers(
     monkeypatch: pytest.MonkeyPatch,
+    error_type: type[Exception],
 ) -> None:
     """Clean up already-started workers when a later launch fails."""
     created: list[object] = []
@@ -125,7 +127,7 @@ def test_launch_failure_terminates_previously_started_workers(
         def start(self) -> None:
             """Fail the second worker launch."""
             if self.config.name == "second":
-                raise OSError("cannot spawn")
+                raise error_type("cannot spawn")
 
         def terminate(self) -> None:
             """Record cleanup."""
